@@ -19,8 +19,8 @@ app.use(cors());
 app.use(express.json());
 
 // --- Serve Static Frontend Files ---
-// This tells Express to serve all static files (like index.html, css, etc.) from the root directory
-app.use(express.static(path.join(__dirname, '')));
+// This tells Express to serve all static files from the 'public' directory
+app.use(express.static(path.join(__dirname, 'public')));
 
 // --- API Endpoint ---
 app.post('/api/generate', async (req, res) => {
@@ -44,7 +44,7 @@ app.post('/api/generate', async (req, res) => {
 // This route handler must be placed after all other API routes.
 // It sends the index.html file for any GET request that isn't an API call.
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 
