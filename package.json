@@ -2,15 +2,18 @@
   "name": "webformatter",
   "version": "1.0.0",
   "description": "Webformatter Based On Gemini",
-  "license": "ISC",
-  "author": "",
-  "type": "commonjs",
   "main": "server.js",
+  "type": "commonjs",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
+  "engines": {
+    "node": "22.16.0"
+  },
   "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "cors": "^2.8.5",
