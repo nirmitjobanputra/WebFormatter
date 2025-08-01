@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Powered Product Data Formatter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+        .main-container {
+            display: flex;
+            gap: 2rem;
+            max-width: 1400px;
+            margin: auto;
+            padding: 2rem;
+        }
+        .sidebar {
+            width: 280px;
+            flex-shrink: 0;
+        }
+        .main-content {
+            flex-grow: 1;
+        }
+        .step-card {
+            background-color: white;
+            border-radius: 12px;
+            padding: 2.5rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            border: 1px solid #e5e7eb;
+            transition: all 0.3s ease-in-out;
+        }
+        .step-nav-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-weight: 500;
+            color: #4b5563;
+            transition: all 0.2s ease;
+            margin-bottom: 0.5rem;
+        }
+        .step-nav-item.active {
+            background-color: #4338ca;
+            color: white;
+        }
+        .step-nav-item.completed {
+            color: #16a34a;
+        }
+        .step-nav-item .step-circle {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-right: 0.75rem;
+            border: 2px solid #d1d5db;
+        }
+        .step-nav-item.active .step-circle {
+            background-color: white;
+            color: #4338ca;
+            border-color: white;
+        }
+        .step-nav-item.completed .step-circle {
+            background-color: #dcfce7;
+            color: #16a34a;
+            border-color: #16a34a;
+        }
+        .file-upload-container { 
+            border: 2px dashed #d1d5db; 
+            transition: all 0.3s ease;
+            background-color: #f9fafb;
+        }
+        .file-upload-container.dragover { 
+            border-color: #4f46e5; 
+            background-color: #eef2ff; 
+        }
+        .loader { 
+            border: 4px solid #e5e7eb; 
+            border-top: 4px solid #4f46e5; 
+            border-radius: 50%; 
+            width: 40px; 
+            height: 40px; 
+            animation: spin 1s linear infinite; 
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .preview-box { 
+            border: 1px solid #e5e7eb; 
+            padding: 1.5rem; 
+            border-radius: 0.75rem; 
+            background-color: #f9fafb; 
+            min-height: 100px; 
+        }
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-primary { background-color: #4f46e5; color: white; }
+        .btn-primary:hover { background-color: #4338ca; }
+        .btn-secondary { background-color: #e5e7eb; color: #374151; }
+        .btn-secondary:hover { background-color: #d1d5db; }
+        .btn-success { background-color: #16a34a; color: white; }
+        .btn-success:hover { background-color: #15803d; }
+         .btn-teal { background-color: #0d9488; color: white; }
+        .btn-teal:hover { background-color: #0f766e; }
+        .btn-blue { background-color: #2563eb; color: white; }
+        .btn-blue:hover { background-color: #1d4ed8; }
+        input[type="file"] {
+             font-size: 0.875rem;
+        }
+        input[type="file"]::file-selector-button {
+            margin-right: 1rem;
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            border: 0;
+            font-weight: 600;
+            background-color: #eef2ff;
+            color: #4338ca;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+         input[type="file"]::file-selector-button:hover {
+            background-color: #e0e7ff;
+         }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="main-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="p-4 bg-white rounded-xl shadow-sm border sticky top-8">
+                <h2 class="text-xl font-bold text-gray-900 mb-6">Workflow Steps</h2>
+                <nav id="step-navigation">
+                    <a href="#" id="nav-step-1" class="step-nav-item active"><span class="step-circle">1</span> Upload Files</a>
+                    <a href="#" id="nav-step-2" class="step-nav-item"><span class="step-circle">2</span> Identify Columns</a>
+                    <a href="#" id="nav-step-3" class="step-nav-item"><span class="step-circle">3</span> Map Data</a>
+                    <a href="#" id="nav-step-4" class="step-nav-item"><span class="step-circle">4</span> Generate Names</a>
+                    <a href="#" id="nav-step-5" class="step-nav-item"><span class="step-circle">5</span> Generate Descriptions</a>
+                    <a href="#" id="nav-step-6" class="step-nav-item"><span class="step-circle">6</span> Preview & Download</a>
+                </nav>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="text-left mb-10">
+                <h1 class="text-4xl font-bold text-gray-900">AI Product Data Formatter</h1>
+                <p class="text-lg text-gray-500 mt-1">Automate your product data enrichment pipeline.</p>
+            </header>
+
+            <div id="status-container" class="text-center my-6 hidden"><div class="flex justify-center items-center"><div class="loader"></div></div><p id="status-message" class="text-lg text-indigo-600 font-medium mt-4"></p></div>
+            <div id="error-box" class="hidden my-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-800 rounded-r-lg"><p id="error-message"></p></div>
+
+            <div id="step-1-upload" class="step-card">
+                <h2 class="text-2xl font-semibold mb-1 text-gray-800">Step 1: Upload Your Files</h2>
+                <p class="text-gray-500 mb-6">Start by uploading the supplier's data sheet and your store's template file.</p>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div id="supplier-drop-container" class="file-upload-container p-6 rounded-lg text-center cursor-pointer hover:bg-gray-50"><label for="supplier-file" class="flex flex-col items-center"><svg class="w-12 h-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-4-4V7a4 4 0 014-4h2a4 4 0 014 4v5a4 4 0 01-4 4H7z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M10 9h4"></path></svg><p class="font-semibold text-gray-700">Supplier's Sheet (.csv)</p><p class="text-sm text-gray-500">Drop file or click to upload</p><input type="file" id="supplier-file" class="hidden" accept=".csv"><span id="supplier-filename" class="text-sm font-medium text-indigo-600 mt-2 block"></span></label></div>
+                    <div id="template-drop-container" class="file-upload-container p-6 rounded-lg text-center cursor-pointer hover:bg-gray-50"><label for="template-file" class="flex flex-col items-center"><svg class="w-12 h-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><p class="font-semibold text-gray-700">Template Sheet (.csv, .txt)</p><p class="text-sm text-gray-500">Drop file or click to upload</p><input type="file" id="template-file" class="hidden" accept=".csv,.txt"><span id="template-filename" class="text-sm font-medium text-indigo-600 mt-2 block"></span></label></div>
+                </div>
+            </div>
+
+            <div id="step-2-images" class="step-card hidden">
+                <h2 class="text-2xl font-semibold mb-1">Step 2: Identify Key Columns</h2><p class="text-gray-500 mb-6">Confirm the product identifier (SKU) and which columns contain image URLs.</p><div class="space-y-6"><div><label for="product-code-select" class="block text-sm font-medium text-gray-700">Product Code/SKU Column</label><select id="product-code-select" class="mt-1 block w-full p-3 border border-gray-300 bg-gray-50 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></select></div><div><label class="block text-sm font-medium text-gray-700">Image Columns</label><div id="image-columns-checkboxes" class="mt-1 p-4 border border-gray-300 rounded-md max-h-48 overflow-y-auto space-y-3 bg-gray-50"></div></div></div><div class="mt-8 text-right"><button id="confirm-images-btn" class="btn btn-primary">Confirm & Continue</button></div>
+            </div>
+
+            <div id="step-3-mapping" class="step-card hidden">
+                 <h2 class="text-2xl font-semibold mb-1">Step 3: Map Data Columns</h2><p class="text-gray-500 mb-6">Match columns from the supplier's sheet to your template. The AI has made its best guess.</p><div id="mapping-table" class="space-y-4"></div><div class="mt-8 text-right"><button id="confirm-mapping-btn" class="btn btn-primary">Confirm & Continue</button></div>
+            </div>
+
+            <div id="step-4-naming" class="step-card hidden">
+                <h2 class="text-2xl font-semibold mb-1">Step 4: Generate SEO-Friendly Product Names</h2><p class="text-gray-500 mb-6">Optionally upload brochures to help the AI. Then, edit the instructions and generate a sample to preview the new name style, or skip this step.</p>
+                <div class="space-y-6">
+                    <div><label for="naming-brochure-files" class="block text-sm font-medium text-gray-700">Upload Brochures for Naming (Optional, PDF)</label><input type="file" id="naming-brochure-files" multiple accept=".pdf" class="mt-2 block w-full"/><div id="naming-brochure-status" class="text-sm mt-2 text-green-600 font-medium"></div></div>
+                    <div><label for="naming-instructions" class="block text-sm font-medium text-gray-700">AI Naming Instructions</label><textarea id="naming-instructions" rows="8" class="w-full p-3 mt-1 border border-gray-300 rounded-md font-mono text-sm shadow-sm focus:ring-indigo-500 focus:border-indigo-500"></textarea></div>
+                    <div id="naming-actions" class="flex flex-wrap justify-end items-center gap-4 pt-4 border-t">
+                        <button id="skip-naming-btn" class="btn btn-secondary">Skip Naming</button>
+                        <button id="generate-name-sample-btn" class="btn btn-blue">Generate Sample</button>
+                        <button id="approve-names-btn" class="btn btn-success hidden">Approve & Generate All</button>
+                    </div>
+                    <div id="name-preview-container" class="hidden pt-6"><h3 class="text-lg font-semibold text-gray-800">Name Preview</h3><div class="preview-box mt-2 grid md:grid-cols-2 gap-6"><p><strong>Original Name:</strong><br><span id="original-name" class="text-gray-600"></span></p><p><strong>Generated Name:</strong><br><span id="new-name" class="text-gray-900 font-semibold"></span></p></div></div>
+                </div>
+            </div>
+
+            <div id="step-5-descriptions" class="step-card hidden">
+                 <h2 class="text-2xl font-semibold mb-1">Step 5: Generate Product Descriptions</h2><p class="text-gray-500 mb-6">Confirm which columns contain content for descriptions, then edit the AI instructions and generate a sample.</p>
+                <div class="space-y-6">
+                    <div><label class="block text-sm font-medium text-gray-700">Columns for Description Content</label><div id="content-columns-checkboxes" class="mt-1 p-4 border border-gray-300 rounded-md max-h-48 overflow-y-auto space-y-3 bg-gray-50"></div></div>
+                    <div><label for="prompt-instructions" class="block text-sm font-medium text-gray-700">AI Description Instructions</label><textarea id="prompt-instructions" rows="10" class="w-full p-3 mt-1 border border-gray-300 rounded-md font-mono text-sm shadow-sm focus:ring-indigo-500 focus:border-indigo-500"></textarea></div>
+                    <div class="flex justify-end items-center gap-4 pt-4 border-t"><button id="generate-sample-btn" class="btn btn-blue">Generate Sample</button><button id="approve-generate-all-btn" class="btn btn-success hidden">Approve & Generate All</button></div>
+                    <div id="description-preview-container" class="hidden pt-6"><h3 class="text-lg font-semibold text-gray-800">Description Preview</h3><div id="description-preview" class="preview-box mt-2"></div></div>
+                </div>
+            </div>
+
+            <div id="step-6-preview" class="step-card hidden">
+                 <h2 class="text-2xl font-semibold mb-1">Step 6: Final Preview & Download</h2><p class="text-gray-500 mb-6">Review the final data. You can download the main product sheet and a separate sheet for additional media.</p><div class="overflow-x-auto max-h-96 border rounded-lg"><table id="preview-table" class="w-full text-sm text-left"></table></div>
+                <div class="mt-8 flex justify-end gap-4"><button id="download-media-btn" class="btn btn-teal">Download Media CSV</button><button id="download-main-btn" class="btn btn-success">Download Main CSV</button></div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module">
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js`;
+
+        // --- State ---
+        let supplierData, supplierHeaders, templateHeaders, productMap = new Map();
+        let productCodeColumn, imageColumns = [], contentColumns = [];
+        let brochureTextMap = new Map(), finalTransformedData = [], additionalMediaData = [];
+        let finalMapping = {};
+        let currentStep = 1;
+
+        // --- DOM ---
+        const D = id => document.getElementById(id);
+        const allSteps = ['step-1-upload', 'step-2-images', 'step-3-mapping', 'step-4-naming', 'step-5-descriptions', 'step-6-preview'];
+        const allNavs = ['nav-step-1', 'nav-step-2', 'nav-step-3', 'nav-step-4', 'nav-step-5', 'nav-step-6'];
+
+        // --- UI ---
+        const showStatus = msg => { D('status-container').classList.remove('hidden'); D('status-message').textContent = msg; };
+        const hideStatus = () => D('status-container').classList.add('hidden');
+        const showError = msg => { D('error-message').textContent = msg; D('error-box').classList.remove('hidden'); setTimeout(() => D('error-box').classList.add('hidden'), 6000); };
+        
+        const showStep = (stepId, stepNum) => {
+            allSteps.forEach(s => D(s).classList.add('hidden'));
+            D(stepId).classList.remove('hidden');
+            
+            currentStep = stepNum;
+            allNavs.forEach((navId, index) => {
+                const nav = D(navId);
+                nav.classList.remove('active', 'completed');
+                if (index < currentStep - 1) {
+                    nav.classList.add('completed');
+                    const circle = nav.querySelector('.step-circle');
+                    circle.innerHTML = '&#10003;'; // Checkmark
+                } else if (index === currentStep - 1) {
+                    nav.classList.add('active');
+                    const circle = nav.querySelector('.step-circle');
+                    circle.textContent = currentStep;
+                } else {
+                     const circle = nav.querySelector('.step-circle');
+                     circle.textContent = index + 1;
+                }
+            });
+            window.scrollTo(0, 0);
+        };
+
+        // --- AI & Parsing ---
+        const callGemini = async prompt => {
+            // The URL of our new backend endpoint
+            const apiUrl = '/api/generate'; // Use a relative path
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                // Send the prompt in the request body
+                body: JSON.stringify({ prompt: prompt })
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(`API Error: ${response.status} - ${err.error}`);
+            }
+
+            const result = await response.json();
+            // The backend sends back a JSON object like { "text": "..." }
+            return result.text.replace(/```(html|json)?/g, '').trim();
+        };
+
+        const parseFile = file => new Promise((resolve, reject) => {
+            Papa.parse(file, { header: true, skipEmptyLines: true, delimiter: file.name.endsWith('.txt') ? "\t" : "",
+                complete: res => res.errors.length > 0 ? reject(new Error(res.errors[0].message)) : resolve(res),
+                error: err => reject(err)
+            });
+        });
+
+        // --- File Handling ---
+        const handleFileUpload = async (event, type) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            D(type + '-filename').textContent = file.name;
+            window[type + 'File'] = file;
+            if (window.supplierFile && window.templateFile) await initProcessing();
+        };
+
+        const setupDragAndDrop = (container, input) => {
+            container.addEventListener('dragover', e => { e.preventDefault(); container.classList.add('dragover'); });
+            container.addEventListener('dragleave', () => container.classList.remove('dragover'));
+            container.addEventListener('drop', e => { e.preventDefault(); container.classList.remove('dragover'); input.files = e.dataTransfer.files; input.dispatchEvent(new Event('change', { bubbles: true }));});
+        };
+        
+        setupDragAndDrop(D('supplier-drop-container'), D('supplier-file'));
+        setupDragAndDrop(D('template-drop-container'), D('template-file'));
+        D('supplier-file').addEventListener('change', e => handleFileUpload(e, 'supplier'));
+        D('template-file').addEventListener('change', e => handleFileUpload(e, 'template'));
+        D('naming-brochure-files').addEventListener('change', e => handleBrochureUpload(e, 'naming-brochure-status'));
+
+        // --- Main Workflow ---
+        async function initProcessing() {
+            showStatus("Parsing files...");
+            try {
+                const [sRes, tRes] = await Promise.all([parseFile(window.supplierFile), parseFile(window.templateFile)]);
+                supplierData = sRes.data; supplierHeaders = sRes.meta.fields; templateHeaders = tRes.meta.fields;
+                if (!supplierHeaders.length || !templateHeaders.length) throw new Error('Could not read headers from files.');
+                showStatus("AI is identifying key columns...");
+                await setupImageSelectionUI();
+                showStep('step-2-images', 2);
+            } catch (e) { showError(e.message); } finally { hideStatus(); }
+        }
+
+        async function setupImageSelectionUI() {
+            const prompt = `From these columns: ${JSON.stringify(supplierHeaders)}, identify the product code/SKU column and all columns with images. Respond with a JSON object like {"productCodeColumn": "COLUMN_NAME", "imageColumns": ["IMG_COL_1"]}.`;
+            try {
+                const suggestions = JSON.parse(await callGemini(prompt));
+                D('product-code-select').innerHTML = supplierHeaders.map(h => `<option value="${h}" ${h === suggestions.productCodeColumn ? 'selected' : ''}>${h}</option>`).join('');
+                D('image-columns-checkboxes').innerHTML = supplierHeaders.map(h => `<div class="flex items-center"><input id="img-col-${h}" type="checkbox" value="${h}" class="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500" ${suggestions.imageColumns?.includes(h) ? 'checked' : ''}><label for="img-col-${h}" class="ml-3 block text-sm text-gray-700">${h}</label></div>`).join('');
+            } catch (e) {
+                showError("AI failed to suggest key columns. Please select them manually.");
+                D('product-code-select').innerHTML = supplierHeaders.map(h => `<option value="${h}">${h}</option>`).join('');
+                D('image-columns-checkboxes').innerHTML = supplierHeaders.map(h => `<div class="flex items-center"><input id="img-col-${h}" type="checkbox" value="${h}" class="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"><label for="img-col-${h}" class="ml-3 block text-sm text-gray-700">${h}</label></div>`).join('');
+            }
+        }
+
+        async function handleConfirmImages() {
+            productCodeColumn = D('product-code-select').value;
+            imageColumns = Array.from(D('image-columns-checkboxes').querySelectorAll('input:checked')).map(cb => cb.value);
+            if (!productCodeColumn) return showError("Please select a product code column.");
+            
+            showStatus("Grouping products and collecting images...");
+            productMap.clear();
+            supplierData.forEach(row => {
+                const code = row[productCodeColumn];
+                if (!code) return;
+                const rowImages = imageColumns.map(col => row[col]).flat().filter(img => img && typeof img === 'string' && img.trim() !== '');
+                if (!productMap.has(code)) productMap.set(code, { dataRow: row, allImages: new Set() });
+                rowImages.forEach(img => productMap.get(code).allImages.add(img));
+            });
+            
+            showStatus("AI is generating column mappings...");
+            try {
+                const mappableHeaders = supplierHeaders.filter(h => !imageColumns.includes(h) && h !== productCodeColumn);
+                const prompt = `Create the most logical mapping from the supplier columns to the template columns. Analyze the names and provide the best fit. Supplier Columns: ${JSON.stringify(mappableHeaders)}. Template Columns: ${JSON.stringify(templateHeaders)}. Respond with a JSON object where each key is a supplier column name and its value is the best matching template column name. If no logical match is found, use a null value.`;
+                const aiMapping = JSON.parse(await callGemini(prompt));
+                displayMappingUI(mappableHeaders, aiMapping);
+                showStep('step-3-mapping', 3);
+            } catch (e) { showError(e.message); } finally { hideStatus(); }
+        }
+
+        function displayMappingUI(sHeaders, aiMapping) {
+            const table = D('mapping-table');
+            table.innerHTML = `<div class="grid grid-cols-2 gap-4 pb-2 border-b-2 font-semibold text-gray-600"><h3 class="pl-2">Supplier Column</h3><h3 class="pl-2">Template Column</h3></div>`;
+            sHeaders.forEach(sHeader => {
+                const match = aiMapping[sHeader] || "none";
+                const options = [`<option value="none">-- Do Not Map --</option>`, ...templateHeaders.map(tHeader => `<option value="${tHeader}" ${match === tHeader ? 'selected' : ''}>${tHeader}</option>`)].join('');
+                table.insertAdjacentHTML('beforeend', `<div class="grid grid-cols-2 gap-4 items-center"><label class="p-2">${sHeader}</label><select data-supplier-header="${sHeader}" class="w-full p-3 border border-gray-300 bg-gray-50 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">${options}</select></div>`);
+            });
+        }
+
+        function handleConfirmMapping() {
+            finalMapping = {};
+            D('mapping-table').querySelectorAll('select').forEach(s => { finalMapping[s.dataset.supplierHeader] = s.value === 'none' ? null : s.value; });
+            D('naming-instructions').value = `You are an expert SEO copywriter specializing in product naming. Your task is to create a clear, descriptive, and SEO-friendly product name based on the provided data.
+
+**INSTRUCTIONS:**
+- The name should be descriptive and include key features, materials, or the primary use case.
+- Avoid internal abbreviations or codes unless they are part of a well-known product line.
+- Prioritize clarity and readability for human users.
+- Incorporate relevant keywords naturally.
+- IMPORTANT: Do not use special characters or symbols. For example, write 'Frankische' instead of 'Fränkische'.
+
+**Original Name:** [ORIGINAL_NAME]
+**Product Data:** [PRODUCT_DATA]
+**Brochure Info:** "[BROCHURE_INFO]"
+
+Based on all this information, generate a single, improved product name.`;
+            showStep('step-4-naming', 4);
+        }
+
+        async function handleBrochureUpload(event, statusElementId) {
+            const files = event.target.files;
+            if (!files.length) return;
+            D(statusElementId).textContent = 'Processing brochures...';
+            brochureTextMap.clear();
+            const productCodes = Array.from(productMap.keys());
+
+            for (const file of files) {
+                const reader = new FileReader();
+                await new Promise(resolve => {
+                    reader.onload = async e => {
+                        const pdf = await pdfjsLib.getDocument({ data: e.target.result }).promise;
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            const page = await pdf.getPage(i);
+                            const textContent = await page.getTextContent();
+                            const pageText = textContent.items.map(item => item.str).join(' ');
+                            productCodes.forEach(code => {
+                                if (pageText.includes(code)) {
+                                    if (!brochureTextMap.has(code)) brochureTextMap.set(code, '');
+                                    brochureTextMap.set(code, brochureTextMap.get(code) + ' ' + pageText);
+                                }
+                            });
+                        }
+                        resolve();
+                    };
+                    reader.readAsArrayBuffer(file);
+                });
+            }
+            D(statusElementId).textContent = `${files.length} brochure(s) processed. Found content for ${brochureTextMap.size} products.`;
+        }
+        
+        async function generateSampleName() {
+            showStatus("Generating sample name...");
+            const firstProduct = productMap.entries().next().value;
+            if (!firstProduct) { hideStatus(); return showError("No products found."); }
+
+            const [stockCode, productInfo] = firstProduct;
+            const { dataRow } = productInfo;
+            const instructions = D('naming-instructions').value;
+            const prompt = instructions
+                .replace('[ORIGINAL_NAME]', dataRow.Name || stockCode)
+                .replace('[PRODUCT_DATA]', JSON.stringify(dataRow))
+                .replace('[BROCHURE_INFO]', brochureTextMap.get(stockCode) || "");
+
+            try {
+                const newName = await callGemini(prompt);
+                D('original-name').textContent = dataRow.Name || stockCode;
+                D('new-name').textContent = newName;
+                D('name-preview-container').classList.remove('hidden');
+                D('approve-names-btn').classList.remove('hidden');
+            } catch (e) { showError(`Failed to generate sample name: ${e.message}`); }
+            finally { hideStatus(); }
+        }
+
+        async function generateAllNames() {
+            showStatus("Generating all product names...");
+            D('approve-names-btn').disabled = true;
+            const instructions = D('naming-instructions').value;
+            let processedCount = 0;
+
+            for (const [stockCode, productInfo] of productMap.entries()) {
+                processedCount++;
+                showStatus(`Generating name ${processedCount} of ${productMap.size} for ${stockCode}...`);
+                const { dataRow } = productInfo;
+                const prompt = instructions
+                    .replace('[ORIGINAL_NAME]', dataRow.Name || stockCode)
+                    .replace('[PRODUCT_DATA]', JSON.stringify(dataRow))
+                    .replace('[BROCHURE_INFO]', brochureTextMap.get(stockCode) || "");
+                try {
+                    const newName = await callGemini(prompt);
+                    productInfo.dataRow.Name = newName; // Update the name in our map
+                } catch (e) {
+                    showError(`Failed to generate name for ${stockCode}. Keeping original.`);
+                }
+            }
+            await setupDescriptionStep();
+        }
+
+        async function skipNamingStep() {
+            showStatus("Skipping name generation...");
+            await setupDescriptionStep();
+        }
+        
+        async function setupDescriptionStep() {
+            const mappableHeaders = supplierHeaders.filter(h => h !== productCodeColumn && !imageColumns.includes(h));
+            const prompt = `From this list of data columns: ${JSON.stringify(mappableHeaders)}, which ones contain useful textual information for writing a product description? e.g., 'Description', 'Attributes', 'Features', 'Brand'. Respond with a JSON array of column names.`;
+            const suggestions = JSON.parse(await callGemini(prompt));
+            D('content-columns-checkboxes').innerHTML = mappableHeaders.map(h => `<div class="flex items-center"><input id="desc-col-${h}" type="checkbox" value="${h}" class="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500" ${suggestions.includes(h) ? 'checked' : ''}><label for="desc-col-${h}" class="ml-3 block text-sm text-gray-700">${h}</label></div>`).join('');
+            D('prompt-instructions').value = `You are an expert SEO copywriter. Create a product description using the following template and data.
+
+**TEMPLATE:**
+<h2><strong>[PRODUCT_NAME]</strong></h2>
+<p><strong>Introducing the [PRODUCT_NAME]...</strong> [Engaging intro paragraph using product data. Mention the brand '[BRAND]' and its range if available.]</p>
+<h3>Key Specifications</h3>
+<ul>
+  <li><strong>Dimension:</strong> [Height] x [Width] x [Depth]</li>
+  <li><strong>Weight:</strong> [Weight]</li>
+  <li><em>...other key specs from data...</em></li>
+</ul>
+<h3>Features & Benefits</h3>
+<p><strong>Waterproof:</strong> This panel is <strong>100% waterproof</strong>, making it ideal for high-moisture areas.</p>
+<p><strong>Installation:</strong> Features advanced <strong>Hydrolock technology</strong> for a seamless, waterproof joint.</p>
+<h3>Warranty & Certification</h3>
+<ul>
+  <li><strong>Warranty:</strong> Comes with a comprehensive <strong>30-year warranty</strong>.</li>
+  <li><strong>Certification:</strong> <strong>FSC certified</strong>, ensuring materials are sourced responsibly.</li>
+</ul>
+
+**INSTRUCTIONS:**
+- Use the exact HTML structure (h2, h3, p, ul, li, strong).
+- Extract specs like dimensions, weight, etc., from the data and put them in the bulleted list.
+- Make key terms like "100% waterproof" and the warranty period bold.
+- If a piece of data (e.g., weight) is not available, omit that bullet point entirely.
+- Write compelling, readable copy based on the provided data.
+- IMPORTANT: Do not use special characters or symbols. For example, write 'Frankische' instead of 'Fränkische' and 'degrees celcius' instead of the degree symbol.
+
+**PRODUCT DATA:** [PRODUCT_DATA]
+**BROCHURE INFO:** "[BROCHURE_INFO]"
+`;
+            showStep('step-5-descriptions', 5);
+            hideStatus();
+        }
+        
+        function getGenerationPrompt(instructions, productData, brochureInfo, productName, brand) {
+            let filledInstructions = instructions.replace(/\[PRODUCT_NAME\]/g, productName);
+            filledInstructions = filledInstructions.replace(/\[BRAND\]/g, brand);
+            filledInstructions = filledInstructions.replace('[PRODUCT_DATA]', JSON.stringify(productData));
+            filledInstructions = filledInstructions.replace('[BROCHURE_INFO]', brochureInfo);
+            return filledInstructions;
+        }
+
+        async function generateSampleDescription() {
+            showStatus("Generating sample description...");
+            contentColumns = Array.from(D('content-columns-checkboxes').querySelectorAll('input:checked')).map(cb => cb.value);
+            if (contentColumns.length === 0) { hideStatus(); return showError("Please select at least one column for content generation."); }
+
+            const firstProduct = productMap.entries().next().value;
+            if (!firstProduct) { hideStatus(); return showError("No products found."); }
+            
+            const [stockCode, productInfo] = firstProduct;
+            const { dataRow } = productInfo;
+            const contentData = contentColumns.reduce((obj, key) => ({ ...obj, [key]: dataRow[key] }), {});
+            const brochureInfo = brochureTextMap.get(stockCode) || "";
+            const instructions = D('prompt-instructions').value;
+            const prompt = getGenerationPrompt(instructions, contentData, brochureInfo, dataRow.Name, dataRow.Brand || 'our exclusive');
+
+            try {
+                const sampleHtml = await callGemini(prompt);
+                D('description-preview').innerHTML = sampleHtml;
+                D('description-preview-container').classList.remove('hidden');
+                D('generate-sample-btn').textContent = 'Regenerate Sample';
+                D('approve-generate-all-btn').classList.remove('hidden');
+            } catch (e) { showError(`Failed to generate sample: ${e.message}`); }
+            finally { hideStatus(); }
+        }
+
+        async function generateAllDescriptions() {
+            showStatus("Generating all product descriptions...");
+            D('approve-generate-all-btn').disabled = true;
+            const bodyTextColumn = templateHeaders.includes('Body Text') ? 'Body Text' : templateHeaders[0];
+            const instructions = D('prompt-instructions').value;
+
+            finalTransformedData = [];
+            additionalMediaData = [];
+            let processedCount = 0;
+
+            for (const [stockCode, productInfo] of productMap.entries()) {
+                processedCount++;
+                showStatus(`Generating description ${processedCount} of ${productMap.size} for ${stockCode}...`);
+                const { dataRow, allImages: imageSet } = productInfo;
+                const images = Array.from(imageSet);
+
+                const newRow = {};
+                templateHeaders.forEach(h => newRow[h] = "");
+                newRow['Product Code'] = stockCode;
+                
+                for (const supplierHeader in finalMapping) {
+                    const templateHeader = finalMapping[supplierHeader];
+                    if (templateHeader) newRow[templateHeader] = dataRow[supplierHeader] || "";
+                }
+                newRow.Name = dataRow.Name;
+
+                const contentData = contentColumns.reduce((obj, key) => ({ ...obj, [key]: dataRow[key] }), {});
+                const brochureInfo = brochureTextMap.get(stockCode) || "";
+                const prompt = getGenerationPrompt(instructions, contentData, brochureInfo, dataRow.Name, dataRow.Brand || 'our exclusive');
+
+                try {
+                    newRow[bodyTextColumn] = await callGemini(prompt);
+                } catch(e) {
+                    showError(`Could not generate description for ${stockCode}.`);
+                    newRow[bodyTextColumn] = `<p>Details for ${stockCode} coming soon.</p>`;
+                }
+
+                if (images.length > 0) {
+                    const path = `/images/ww/product/${images[0].split('/').pop()}`;
+                    newRow['Main Image'] = path; newRow['Thumbnail Image'] = path; newRow['Zoom Image'] = path;
+                    images.slice(1).forEach((img, index) => {
+                        const imgName = img.split('/').pop();
+                        additionalMediaData.push({'Image Name': `${stockCode} ${index+2}`, 'Main Image': `/images/ww/product/${imgName}`, 'Thumbnail Image': `/images/ww/product/${imgName}`, 'Stock Code of Product': stockCode });
+                    });
+                }
+                finalTransformedData.push(newRow);
+            }
+            
+            showStep('step-6-preview', 6);
+            displayPreview();
+            hideStatus();
+        }
+
+        function displayPreview() {
+            const headers = templateHeaders;
+            const table = D('preview-table');
+            table.innerHTML = `<thead><tr>${headers.map(h => `<th class="p-3 bg-gray-50 text-left font-semibold text-gray-600 border-b">${h}</th>`).join('')}</tr></thead>`;
+            const tbody = document.createElement('tbody');
+            finalTransformedData.slice(0, 100).forEach(row => {
+                const tr = `<tr>${headers.map(h => `<td class="px-3 py-2 border-b border-gray-200">${row[h] || ''}</td>`).join('')}</tr>`;
+                tbody.insertAdjacentHTML('beforeend', tr);
+            });
+            table.appendChild(tbody);
+        }
+
+        function downloadCSV(data, headers, filename) {
+            const csv = Papa.unparse(data, { columns: headers, header: true });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        // --- Event Listeners ---
+        D('confirm-images-btn').addEventListener('click', handleConfirmImages);
+        D('confirm-mapping-btn').addEventListener('click', handleConfirmMapping);
+        D('generate-name-sample-btn').addEventListener('click', generateSampleName);
+        D('approve-names-btn').addEventListener('click', generateAllNames);
+        D('skip-naming-btn').addEventListener('click', skipNamingStep);
+        D('generate-sample-btn').addEventListener('click', generateSampleDescription);
+        D('approve-generate-all-btn').addEventListener('click', generateAllDescriptions);
+        D('download-main-btn').onclick = () => downloadCSV(finalTransformedData, templateHeaders, 'formatted_products.csv');
+        D('download-media-btn').onclick = () => downloadCSV(additionalMediaData, ['Image Name', 'Main Image', 'Thumbnail Image', 'Stock Code of Product'], 'product_media_to_xx.csv');
+
+        // Initialize first step
+        showStep('step-1-upload', 1);
+    </script>
+</body>
+</html>
