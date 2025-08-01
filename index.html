@@ -15,14 +15,25 @@
         }
         .main-container {
             display: flex;
+            flex-direction: column;
             gap: 2rem;
             max-width: 1400px;
             margin: auto;
             padding: 2rem;
         }
+        @media (min-width: 1024px) {
+            .main-container {
+                flex-direction: row;
+            }
+        }
         .sidebar {
-            width: 280px;
+            width: 100%;
             flex-shrink: 0;
+        }
+         @media (min-width: 1024px) {
+            .sidebar {
+                width: 280px;
+            }
         }
         .main-content {
             flex-grow: 1;
@@ -175,11 +186,11 @@
             </div>
 
             <div id="step-2-images" class="step-card hidden">
-                <h2 class="text-2xl font-semibold mb-1">Step 2: Identify Key Columns</h2><p class="text-gray-500 mb-6">Confirm the product identifier (SKU) and which columns contain image URLs.</p><div class="space-y-6"><div><label for="product-code-select" class="block text-sm font-medium text-gray-700">Product Code/SKU Column</label><select id="product-code-select" class="mt-1 block w-full p-3 border border-gray-300 bg-gray-50 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></select></div><div><label class="block text-sm font-medium text-gray-700">Image Columns</label><div id="image-columns-checkboxes" class="mt-1 p-4 border border-gray-300 rounded-md max-h-48 overflow-y-auto space-y-3 bg-gray-50"></div></div></div><div class="mt-8 text-right"><button id="confirm-images-btn" class="btn btn-primary">Confirm & Continue</button></div>
+                <h2 class="text-2xl font-semibold mb-1">Step 2: Identify Key Columns</h2><p class="text-gray-500 mb-6">Confirm the product identifier (SKU) and which columns contain image URLs. The AI has made its best guess.</p><div class="space-y-6"><div><label for="product-code-select" class="block text-sm font-medium text-gray-700">Product Code/SKU Column</label><select id="product-code-select" class="mt-1 block w-full p-3 border border-gray-300 bg-gray-50 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></select></div><div><label class="block text-sm font-medium text-gray-700">Image Columns (Select all that apply)</label><div id="image-columns-checkboxes" class="mt-1 p-4 border border-gray-300 rounded-md max-h-48 overflow-y-auto space-y-3 bg-gray-50"></div></div></div><div class="mt-8 text-right"><button id="confirm-images-btn" class="btn btn-primary">Confirm & Continue</button></div>
             </div>
 
             <div id="step-3-mapping" class="step-card hidden">
-                 <h2 class="text-2xl font-semibold mb-1">Step 3: Map Data Columns</h2><p class="text-gray-500 mb-6">Match columns from the supplier's sheet to your template. The AI has made its best guess.</p><div id="mapping-table" class="space-y-4"></div><div class="mt-8 text-right"><button id="confirm-mapping-btn" class="btn btn-primary">Confirm & Continue</button></div>
+                 <h2 class="text-2xl font-semibold mb-1">Step 3: Map Data Columns</h2><p class="text-gray-500 mb-6">Match columns from the supplier's sheet to your template. The AI has made its best guess. Correct any mappings as needed.</p><div id="mapping-table" class="space-y-4"></div><div class="mt-8 text-right"><button id="confirm-mapping-btn" class="btn btn-primary">Confirm & Continue</button></div>
             </div>
 
             <div id="step-4-naming" class="step-card hidden">
@@ -197,7 +208,7 @@
             </div>
 
             <div id="step-5-descriptions" class="step-card hidden">
-                 <h2 class="text-2xl font-semibold mb-1">Step 5: Generate Product Descriptions</h2><p class="text-gray-500 mb-6">Confirm which columns contain content for descriptions, then edit the AI instructions and generate a sample.</p>
+                 <h2 class="text-2xl font-semibold mb-1">Step 5: Generate Product Descriptions</h2><p class="text-gray-500 mb-6">Confirm which columns contain content for descriptions, then edit the AI instructions and generate a sample. Brochure content from the previous step will be used if available.</p>
                 <div class="space-y-6">
                     <div><label class="block text-sm font-medium text-gray-700">Columns for Description Content</label><div id="content-columns-checkboxes" class="mt-1 p-4 border border-gray-300 rounded-md max-h-48 overflow-y-auto space-y-3 bg-gray-50"></div></div>
                     <div><label for="prompt-instructions" class="block text-sm font-medium text-gray-700">AI Description Instructions</label><textarea id="prompt-instructions" rows="10" class="w-full p-3 mt-1 border border-gray-300 rounded-md font-mono text-sm shadow-sm focus:ring-indigo-500 focus:border-indigo-500"></textarea></div>
@@ -222,6 +233,7 @@
         let brochureTextMap = new Map(), finalTransformedData = [], additionalMediaData = [];
         let finalMapping = {};
         let currentStep = 1;
+        let apiKey = ""; // Leave this empty, it will be handled by the server
 
         // --- DOM ---
         const D = id => document.getElementById(id);
@@ -231,7 +243,7 @@
         // --- UI ---
         const showStatus = msg => { D('status-container').classList.remove('hidden'); D('status-message').textContent = msg; };
         const hideStatus = () => D('status-container').classList.add('hidden');
-        const showError = msg => { D('error-message').textContent = msg; D('error-box').classList.remove('hidden'); setTimeout(() => D('error-box').classList.add('hidden'), 6000); };
+        const showError = msg => { D('error-message').textContent = msg; D('error-box').classList.remove('hidden'); setTimeout(() => D('error-box').classList.add('hidden'), 8000); };
         
         const showStep = (stepId, stepNum) => {
             allSteps.forEach(s => D(s).classList.add('hidden'));
@@ -258,27 +270,34 @@
         };
 
         // --- AI & Parsing ---
-        const callGemini = async prompt => {
-            // The URL of our new backend endpoint
-            const apiUrl = '/api/generate'; // Use a relative path
+        const callGeminiWithRetry = async (prompt, maxRetries = 3, initialDelay = 1000) => {
+            let delay = initialDelay;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    // Use the relative path to your backend proxy
+                    const apiUrl = '/api/generate'; 
+                    const response = await fetch(apiUrl, { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'application/json' }, 
+                        body: JSON.stringify({ prompt }) 
+                    });
 
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                // Send the prompt in the request body
-                body: JSON.stringify({ prompt: prompt })
-            });
-
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(`API Error: ${response.status} - ${err.error}`);
+                    if (!response.ok) {
+                         const errorBody = await response.json();
+                         throw new Error(`API Error: ${response.status} - ${errorBody.error}`);
+                    }
+                    const result = await response.json();
+                    if (!result.text) {
+                        throw new Error("Invalid response structure from server.");
+                    }
+                    return result.text.replace(/```(html|json)?/g, '').trim();
+                } catch (error) {
+                    console.error(`Attempt ${i + 1} failed: ${error.message}`);
+                    if (i === maxRetries - 1) throw error; // Rethrow last error
+                    await new Promise(res => setTimeout(res, delay));
+                    delay *= 2; // Exponential backoff
+                }
             }
-
-            const result = await response.json();
-            // The backend sends back a JSON object like { "text": "..." }
-            return result.text.replace(/```(html|json)?/g, '').trim();
         };
 
         const parseFile = file => new Promise((resolve, reject) => {
@@ -315,23 +334,41 @@
             try {
                 const [sRes, tRes] = await Promise.all([parseFile(window.supplierFile), parseFile(window.templateFile)]);
                 supplierData = sRes.data; supplierHeaders = sRes.meta.fields; templateHeaders = tRes.meta.fields;
-                if (!supplierHeaders.length || !templateHeaders.length) throw new Error('Could not read headers from files.');
+                if (!supplierHeaders || !supplierHeaders.length || !templateHeaders || !templateHeaders.length) {
+                    throw new Error('Could not read headers from one or both files. Please ensure they are valid CSV or TXT files.');
+                }
                 showStatus("AI is identifying key columns...");
                 await setupImageSelectionUI();
                 showStep('step-2-images', 2);
-            } catch (e) { showError(e.message); } finally { hideStatus(); }
+            } catch (e) { 
+                showError(e.message); 
+                // Reset file inputs if parsing fails
+                D('supplier-file').value = '';
+                D('template-file').value = '';
+                D('supplier-filename').textContent = '';
+                D('template-filename').textContent = '';
+                window.supplierFile = null;
+                window.templateFile = null;
+            } finally { 
+                hideStatus(); 
+            }
+        }
+
+        function populateManualColumnSelectors() {
+            D('product-code-select').innerHTML = supplierHeaders.map(h => `<option value="${h}">${h}</option>`).join('');
+            D('image-columns-checkboxes').innerHTML = supplierHeaders.map(h => `<div class="flex items-center"><input id="img-col-${h}" type="checkbox" value="${h}" class="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"><label for="img-col-${h}" class="ml-3 block text-sm text-gray-700">${h}</label></div>`).join('');
         }
 
         async function setupImageSelectionUI() {
             const prompt = `From these columns: ${JSON.stringify(supplierHeaders)}, identify the product code/SKU column and all columns with images. Respond with a JSON object like {"productCodeColumn": "COLUMN_NAME", "imageColumns": ["IMG_COL_1"]}.`;
             try {
-                const suggestions = JSON.parse(await callGemini(prompt));
+                const suggestionsText = await callGeminiWithRetry(prompt);
+                const suggestions = JSON.parse(suggestionsText);
                 D('product-code-select').innerHTML = supplierHeaders.map(h => `<option value="${h}" ${h === suggestions.productCodeColumn ? 'selected' : ''}>${h}</option>`).join('');
                 D('image-columns-checkboxes').innerHTML = supplierHeaders.map(h => `<div class="flex items-center"><input id="img-col-${h}" type="checkbox" value="${h}" class="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500" ${suggestions.imageColumns?.includes(h) ? 'checked' : ''}><label for="img-col-${h}" class="ml-3 block text-sm text-gray-700">${h}</label></div>`).join('');
             } catch (e) {
                 showError("AI failed to suggest key columns. Please select them manually.");
-                D('product-code-select').innerHTML = supplierHeaders.map(h => `<option value="${h}">${h}</option>`).join('');
-                D('image-columns-checkboxes').innerHTML = supplierHeaders.map(h => `<div class="flex items-center"><input id="img-col-${h}" type="checkbox" value="${h}" class="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500"><label for="img-col-${h}" class="ml-3 block text-sm text-gray-700">${h}</label></div>`).join('');
+                populateManualColumnSelectors();
             }
         }
 
@@ -351,13 +388,19 @@
             });
             
             showStatus("AI is generating column mappings...");
+            const mappableHeaders = supplierHeaders.filter(h => !imageColumns.includes(h) && h !== productCodeColumn);
+            let aiMapping = {};
             try {
-                const mappableHeaders = supplierHeaders.filter(h => !imageColumns.includes(h) && h !== productCodeColumn);
                 const prompt = `Create the most logical mapping from the supplier columns to the template columns. Analyze the names and provide the best fit. Supplier Columns: ${JSON.stringify(mappableHeaders)}. Template Columns: ${JSON.stringify(templateHeaders)}. Respond with a JSON object where each key is a supplier column name and its value is the best matching template column name. If no logical match is found, use a null value.`;
-                const aiMapping = JSON.parse(await callGemini(prompt));
+                const mappingText = await callGeminiWithRetry(prompt);
+                aiMapping = JSON.parse(mappingText);
+            } catch (e) { 
+                showError("AI failed to suggest mappings. Please map columns manually.");
+            } finally {
                 displayMappingUI(mappableHeaders, aiMapping);
                 showStep('step-3-mapping', 3);
-            } catch (e) { showError(e.message); } finally { hideStatus(); }
+                hideStatus();
+            }
         }
 
         function displayMappingUI(sHeaders, aiMapping) {
@@ -401,19 +444,24 @@ Based on all this information, generate a single, improved product name.`;
                 const reader = new FileReader();
                 await new Promise(resolve => {
                     reader.onload = async e => {
-                        const pdf = await pdfjsLib.getDocument({ data: e.target.result }).promise;
-                        for (let i = 1; i <= pdf.numPages; i++) {
-                            const page = await pdf.getPage(i);
-                            const textContent = await page.getTextContent();
-                            const pageText = textContent.items.map(item => item.str).join(' ');
-                            productCodes.forEach(code => {
-                                if (pageText.includes(code)) {
-                                    if (!brochureTextMap.has(code)) brochureTextMap.set(code, '');
-                                    brochureTextMap.set(code, brochureTextMap.get(code) + ' ' + pageText);
-                                }
-                            });
+                        try {
+                            const pdf = await pdfjsLib.getDocument({ data: e.target.result }).promise;
+                            for (let i = 1; i <= pdf.numPages; i++) {
+                                const page = await pdf.getPage(i);
+                                const textContent = await page.getTextContent();
+                                const pageText = textContent.items.map(item => item.str).join(' ');
+                                productCodes.forEach(code => {
+                                    if (pageText.includes(code)) {
+                                        if (!brochureTextMap.has(code)) brochureTextMap.set(code, '');
+                                        brochureTextMap.set(code, brochureTextMap.get(code) + ' ' + pageText);
+                                    }
+                                });
+                            }
+                        } catch (pdfError) {
+                            showError(`Could not process PDF "${file.name}": ${pdfError.message}`);
+                        } finally {
+                            resolve();
                         }
-                        resolve();
                     };
                     reader.readAsArrayBuffer(file);
                 });
@@ -432,10 +480,10 @@ Based on all this information, generate a single, improved product name.`;
             const prompt = instructions
                 .replace('[ORIGINAL_NAME]', dataRow.Name || stockCode)
                 .replace('[PRODUCT_DATA]', JSON.stringify(dataRow))
-                .replace('[BROCHURE_INFO]', brochureTextMap.get(stockCode) || "");
+                .replace('[BROCHURE_INFO]', brochureTextMap.get(stockCode) || "N/A");
 
             try {
-                const newName = await callGemini(prompt);
+                const newName = await callGeminiWithRetry(prompt);
                 D('original-name').textContent = dataRow.Name || stockCode;
                 D('new-name').textContent = newName;
                 D('name-preview-container').classList.remove('hidden');
@@ -457,9 +505,9 @@ Based on all this information, generate a single, improved product name.`;
                 const prompt = instructions
                     .replace('[ORIGINAL_NAME]', dataRow.Name || stockCode)
                     .replace('[PRODUCT_DATA]', JSON.stringify(dataRow))
-                    .replace('[BROCHURE_INFO]', brochureTextMap.get(stockCode) || "");
+                    .replace('[BROCHURE_INFO]', brochureTextMap.get(stockCode) || "N/A");
                 try {
-                    const newName = await callGemini(prompt);
+                    const newName = await callGeminiWithRetry(prompt);
                     productInfo.dataRow.Name = newName; // Update the name in our map
                 } catch (e) {
                     showError(`Failed to generate name for ${stockCode}. Keeping original.`);
@@ -476,8 +524,17 @@ Based on all this information, generate a single, improved product name.`;
         async function setupDescriptionStep() {
             const mappableHeaders = supplierHeaders.filter(h => h !== productCodeColumn && !imageColumns.includes(h));
             const prompt = `From this list of data columns: ${JSON.stringify(mappableHeaders)}, which ones contain useful textual information for writing a product description? e.g., 'Description', 'Attributes', 'Features', 'Brand'. Respond with a JSON array of column names.`;
-            const suggestions = JSON.parse(await callGemini(prompt));
+            
+            let suggestions = [];
+            try {
+                const suggestionsText = await callGeminiWithRetry(prompt);
+                suggestions = JSON.parse(suggestionsText);
+            } catch (e) {
+                showError("AI failed to suggest description columns. Please select them manually.");
+            }
+
             D('content-columns-checkboxes').innerHTML = mappableHeaders.map(h => `<div class="flex items-center"><input id="desc-col-${h}" type="checkbox" value="${h}" class="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500" ${suggestions.includes(h) ? 'checked' : ''}><label for="desc-col-${h}" class="ml-3 block text-sm text-gray-700">${h}</label></div>`).join('');
+            
             D('prompt-instructions').value = `You are an expert SEO copywriter. Create a product description using the following template and data.
 
 **TEMPLATE:**
@@ -532,12 +589,12 @@ Based on all this information, generate a single, improved product name.`;
             const [stockCode, productInfo] = firstProduct;
             const { dataRow } = productInfo;
             const contentData = contentColumns.reduce((obj, key) => ({ ...obj, [key]: dataRow[key] }), {});
-            const brochureInfo = brochureTextMap.get(stockCode) || "";
+            const brochureInfo = brochureTextMap.get(stockCode) || "N/A";
             const instructions = D('prompt-instructions').value;
-            const prompt = getGenerationPrompt(instructions, contentData, brochureInfo, dataRow.Name, dataRow.Brand || 'our exclusive');
+            const prompt = getGenerationPrompt(instructions, contentData, brochureInfo, dataRow.Name || stockCode, dataRow.Brand || 'our exclusive');
 
             try {
-                const sampleHtml = await callGemini(prompt);
+                const sampleHtml = await callGeminiWithRetry(prompt);
                 D('description-preview').innerHTML = sampleHtml;
                 D('description-preview-container').classList.remove('hidden');
                 D('generate-sample-btn').textContent = 'Regenerate Sample';
@@ -573,11 +630,11 @@ Based on all this information, generate a single, improved product name.`;
                 newRow.Name = dataRow.Name;
 
                 const contentData = contentColumns.reduce((obj, key) => ({ ...obj, [key]: dataRow[key] }), {});
-                const brochureInfo = brochureTextMap.get(stockCode) || "";
-                const prompt = getGenerationPrompt(instructions, contentData, brochureInfo, dataRow.Name, dataRow.Brand || 'our exclusive');
+                const brochureInfo = brochureTextMap.get(stockCode) || "N/A";
+                const prompt = getGenerationPrompt(instructions, contentData, brochureInfo, dataRow.Name || stockCode, dataRow.Brand || 'our exclusive');
 
                 try {
-                    newRow[bodyTextColumn] = await callGemini(prompt);
+                    newRow[bodyTextColumn] = await callGeminiWithRetry(prompt);
                 } catch(e) {
                     showError(`Could not generate description for ${stockCode}.`);
                     newRow[bodyTextColumn] = `<p>Details for ${stockCode} coming soon.</p>`;
